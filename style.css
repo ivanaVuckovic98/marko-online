@@ -551,7 +551,7 @@ h3,
   }
 
   .project-modal {
-    background: rgba(242, 242, 242, 0.65);
+    background: rgba(242, 242, 242, 0.50);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
 }
