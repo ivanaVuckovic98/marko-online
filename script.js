@@ -1,4 +1,5 @@
-// Tehnički podaci o radovima: slike i godine. Tekstovi su u translations.js.
+
+ // Tehnički podaci o radovima: slike i godine. Tekstovi su u translations.js.
 const projects = {
   "ona": {
     "year": 2024,
@@ -19,15 +20,15 @@ const projects = {
       "images/overhang2.jpeg"
     ]
   },
- 
-"overscroll": {
+
+  "overscroll": {
     "year": 2026,
     "images": [
-        "images/overscroll1.jpeg",
-        "images/overscroll2.jpeg",
-        "images/featured-overscroll.jpeg"
+      "images/overscroll1.jpeg",
+      "images/overscroll2.jpeg",
+      "images/featured-overscroll.jpeg"
     ]
-},
+  },
   "severart": {
     "year": 2025,
     "images": [
@@ -36,11 +37,21 @@ const projects = {
       "images/severart3.jpeg"
     ]
   },
+
   "grill": {
     "year": 2024,
     "images": [
       "images/grill.jpeg"
     ]
+  },
+
+  "paintedgray": {
+    "year": 2025,
+    "type": "photobook",
+    "images": Array.from(
+      { length: 30 },
+      (_, index) => `images/photobook/${index + 1}_result.jpg`
+    )
   }
 };
 
@@ -148,6 +159,11 @@ function renderProject(id) {
 
 function openProject(id) {
     if (!projects[id]) return;
+    if (id === "paintedgray") {
+        previousFocus = document.activeElement;
+        openPhotobook();
+        return;
+    }
     previousFocus = document.activeElement;
     currentProjectId = id;
     renderProject(id);
@@ -184,7 +200,6 @@ document.addEventListener("keydown", event => {
         else if (mainNavigation.classList.contains("is-open")) closeMobileMenu();
     }
     if (event.key === "Tab" && currentProjectId) {
-        // Trenutno jedina fokusabilna kontrola u modalu je dugme za zatvaranje.
         event.preventDefault();
         closeButton.focus();
     }
@@ -215,3 +230,230 @@ try {
     if (saved && translations[saved]) currentLanguage = saved;
 } catch (_) {}
 renderLanguage();
+
+/* =====================================
+   PAINTED GRAY — PHOTOBOOK
+   Prioritet naslovnice, kontrolisani background preload,
+   ponovno koristenje vec ucitanih slika i ispravna rotacija.
+===================================== */
+
+const photobookModal = document.getElementById("photobook-modal");
+const photobookPages = document.getElementById("photobook-pages");
+const photobookCounter = document.getElementById("photobook-counter");
+const photobookPrev = document.getElementById("photobook-prev");
+const photobookNext = document.getElementById("photobook-next");
+const photobookRotateLeft = document.getElementById("photobook-rotate-left");
+const photobookRotateRight = document.getElementById("photobook-rotate-right");
+const photobookClose = document.getElementById("close-photobook");
+const photobookViewer = document.querySelector(".photobook-viewer");
+const photobookImages = projects.paintedgray.images;
+
+let currentBookPage = 0;
+let currentBookRotation = 0;
+let visibleBookImage = null;
+let photobookRenderToken = 0;
+
+// Svaki URL ucitavamo najvise jednom kroz ovaj sistem.
+// Cuvamo Image objekat, ne samo URL, da ne stvaramo novi img pri listanju.
+const photobookCache = new Map();
+
+function loadPhotobookImage(index, priority = false) {
+    if (index < 0 || index >= photobookImages.length) {
+        return Promise.resolve(null);
+    }
+
+    if (photobookCache.has(index)) {
+        return photobookCache.get(index).promise;
+    }
+
+    const img = new Image();
+    img.alt = `Painted Gray — page ${index + 1}`;
+    img.decoding = "async";
+    if ("fetchPriority" in img) {
+        img.fetchPriority = priority ? "high" : "low";
+    }
+
+    const record = { img, status: "loading", promise: null };
+    record.promise = new Promise(resolve => {
+        img.onload = async () => {
+            // Dekodiranje unaprijed smanjuje zastajkivanje pri prikazu.
+            if (typeof img.decode === "function") {
+                try { await img.decode(); } catch (_) { /* slika je ipak ucitana */ }
+            }
+            record.status = "ready";
+            resolve(img);
+        };
+        img.onerror = () => {
+            record.status = "error";
+            resolve(null);
+        };
+    });
+    photobookCache.set(index, record);
+    img.src = photobookImages[index];
+    return record.promise;
+}
+
+// Ne pokrecemo 30 preuzimanja odjednom: pozadina radi sa dva paralelna.
+let backgroundIndex = 1;
+let backgroundActive = 0;
+const BACKGROUND_LIMIT = 2;
+let backgroundEnabled = false;
+
+function scheduleBackgroundPhotobook() {
+    if (!backgroundEnabled) return;
+    while (backgroundActive < BACKGROUND_LIMIT && backgroundIndex < photobookImages.length) {
+        const index = backgroundIndex++;
+        // Ako je korisnik vec otvorio stranicu, zahtjev je vec u toku ili zavrsen.
+        if (photobookCache.has(index)) continue;
+        backgroundActive++;
+        loadPhotobookImage(index).finally(() => {
+            backgroundActive--;
+            // Ostavimo browseru vremena za interakciju i ostatak stranice.
+            if ("requestIdleCallback" in window) {
+                window.requestIdleCallback(scheduleBackgroundPhotobook, { timeout: 1500 });
+            } else {
+                setTimeout(scheduleBackgroundPhotobook, 150);
+            }
+        });
+    }
+}
+
+function startBackgroundPhotobook() {
+    if (backgroundEnabled) return;
+    backgroundEnabled = true;
+    scheduleBackgroundPhotobook();
+}
+
+// Naslovnica pocinje da se ucitava cim se izvrsi script.js.
+loadPhotobookImage(0, true);
+// Ostale fotografije tek poslije ucitavanja osnovne stranice.
+if (document.readyState === "complete") {
+    setTimeout(startBackgroundPhotobook, 300);
+} else {
+    window.addEventListener("load", () => setTimeout(startBackgroundPhotobook, 300), { once: true });
+}
+
+function fitPhotobookImage() {
+    if (!visibleBookImage || !visibleBookImage.naturalWidth || !photobookModal.classList.contains("is-open")) return;
+
+    const width = photobookViewer.clientWidth;
+    const height = photobookViewer.clientHeight;
+    if (!width || !height) return;
+
+    const rotated = currentBookRotation % 180 !== 0;
+    const availableWidth = rotated ? height : width;
+    const availableHeight = rotated ? width : height;
+    const scale = Math.min(
+        availableWidth / visibleBookImage.naturalWidth,
+        availableHeight / visibleBookImage.naturalHeight
+    );
+
+    visibleBookImage.style.width = `${visibleBookImage.naturalWidth * scale}px`;
+    visibleBookImage.style.height = `${visibleBookImage.naturalHeight * scale}px`;
+    visibleBookImage.style.maxWidth = "none";
+    visibleBookImage.style.maxHeight = "none";
+    visibleBookImage.style.transform = `rotate(${currentBookRotation}deg)`;
+    visibleBookImage.style.transformOrigin = "center center";
+}
+
+function renderPhotobook() {
+    const index = currentBookPage;
+    const token = ++photobookRenderToken;
+    visibleBookImage = null;
+    photobookPages.replaceChildren();
+
+    const page = document.createElement("div");
+    page.className = "photobook-page";
+    photobookPages.appendChild(page);
+
+    photobookCounter.textContent = `${index + 1} / ${photobookImages.length}`;
+    photobookPrev.disabled = index === 0;
+    photobookNext.disabled = index === photobookImages.length - 1;
+
+    const record = photobookCache.get(index);
+    if (!record || record.status === "loading") {
+        const loading = document.createElement("span");
+        loading.textContent = "Loading…";
+        loading.setAttribute("role", "status");
+        loading.style.cssText = "font-size:13px;color:#777;letter-spacing:.04em";
+        page.appendChild(loading);
+    }
+
+    // Ako je slika vec spremna, ovaj callback se izvrsava bez mreze.
+    loadPhotobookImage(index, true).then(img => {
+        if (token !== photobookRenderToken || !photobookModal.classList.contains("is-open")) return;
+        page.replaceChildren();
+        if (!img) {
+            const message = document.createElement("span");
+            message.textContent = `Could not load page ${index + 1}.`;
+            message.style.cssText = "font-size:13px;color:#777";
+            page.appendChild(message);
+            return;
+        }
+        // Premjestamo postojeci, vec ucitani img u viewer.
+        img.style.display = "block";
+        page.appendChild(img);
+        visibleBookImage = img;
+        fitPhotobookImage();
+    });
+
+    // Pripremamo susjedne fotografije odmah, ne cekamo pozadinski red.
+    loadPhotobookImage(index + 1, true);
+    loadPhotobookImage(index + 2, true);
+    loadPhotobookImage(index - 1);
+}
+
+function openPhotobook() {
+    previousFocus = document.activeElement;
+    currentBookPage = 0;
+    currentBookRotation = 0;
+    photobookModal.classList.add("is-open");
+    photobookModal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    renderPhotobook();
+    photobookClose.focus();
+}
+
+function closePhotobook() {
+    photobookRenderToken++;
+    photobookModal.classList.remove("is-open");
+    photobookModal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+}
+
+function turnPhotobook(direction) {
+    const next = Math.max(0, Math.min(currentBookPage + direction, photobookImages.length - 1));
+    if (next === currentBookPage) return;
+    currentBookPage = next;
+    currentBookRotation = 0;
+    renderPhotobook();
+}
+
+function rotatePhotobook(degrees) {
+    currentBookRotation = (currentBookRotation + degrees + 360) % 360;
+    // Ne kreiramo ponovo sliku pri rotaciji.
+    fitPhotobookImage();
+}
+
+photobookPrev.addEventListener("click", () => turnPhotobook(-1));
+photobookNext.addEventListener("click", () => turnPhotobook(1));
+photobookRotateLeft.addEventListener("click", () => rotatePhotobook(-90));
+photobookRotateRight.addEventListener("click", () => rotatePhotobook(90));
+photobookClose.addEventListener("click", closePhotobook);
+
+photobookModal.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closePhotobook();
+    } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        turnPhotobook(1);
+    } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        turnPhotobook(-1);
+    }
+});
+
+window.addEventListener("resize", fitPhotobookImage);

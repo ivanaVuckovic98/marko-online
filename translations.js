@@ -33,6 +33,11 @@ const translations = {
         "openMenu": "Open navigation menu",
         "closeMenu": "Close navigation menu",
         "projects": {
+            "paintedgray": {
+                "title": "Painted Gray",
+                "type": "Photobook",
+                "description": []
+            },
             "ona": {
                 "title": "Ona",
                 "type": "Concept",
@@ -123,6 +128,11 @@ const translations = {
         "openMenu": "Otvori navigaciju",
         "closeMenu": "Zatvori navigaciju",
         "projects": {
+            "paintedgray": {
+                "title": "Painted Gray",
+                "type": "Fotoknjiga",
+                "description": []
+            },
             "ona": {
                 "title": "Ona",
                 "type": "Koncept",
@@ -213,6 +223,12 @@ const translations = {
         "openMenu": "Odpri navigacijo",
         "closeMenu": "Zapri navigacijo",
         "projects": {
+
+            "paintedgray": {
+                "title": "Painted Gray",
+                "type": "Fotoknjiga",
+                "description": []
+            },
             "ona": {
                 "title": "Ona",
                 "type": "Koncept",
